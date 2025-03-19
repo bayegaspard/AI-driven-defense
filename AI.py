@@ -52,7 +52,7 @@ data.drop(columns=categorical_cols, inplace=True, errors='ignore')
 # Cap classes to specific sample size
 samples_per_class = 5000  # Adjust this number as needed
 print(f'Capping each class to {samples_per_class} samples...')
-data_capped = data.groupby('Label').apply(lambda x: x.sample(n=min(len(x), samples_per_class), random_state=42)).reset_index(drop=True)
+data_capped = data.groupby('Label', group_keys=False).apply(lambda x: x.sample(n=min(len(x), samples_per_class), random_state=42)).reset_index(drop=True)
 
 print('Extracting features and labels...')
 X = data_capped.drop(columns=['Label']).values
@@ -135,25 +135,27 @@ accuracy = (torch.tensor(y_pred) == torch.tensor(y_true)).float().mean().item()
 print(f'Test Accuracy: {accuracy * 100:.2f}%')
 
 # Plotting loss and accuracy
-plt.figure(figsize=(12,5))
-plt.subplot(1, 2, 1)
+plt.figure(figsize=(6,5))
 plt.plot(train_losses, '-o', label='Loss')
 plt.plot(train_accuracies, '-o', label='Accuracy')
 plt.xlabel('Epochs')
 plt.ylabel('Value')
 plt.title('Training Loss and Accuracy')
 plt.legend()
+plt.tight_layout()
+plt.savefig('training_accuracy_loss.png')
+plt.close()
 
 # Confusion matrix
-plt.subplot(1, 2, 2)
+plt.figure(figsize=(8,6))
 cm = confusion_matrix(y_true, y_pred)
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
 plt.title('Confusion Matrix')
 plt.xlabel('Predicted')
 plt.ylabel('True')
-
 plt.tight_layout()
-plt.savefig('training_results.png')
+plt.savefig('confusion_matrix.png')
+plt.close()
 
 # Classification report
-print('Classification Report:\n', classification_report(y_true, y_pred, target_names=label_encoder.classes_))
+print('Classification Report:\n', classification_report(y_true, y_pred, target_names=label_encoder.classes_, zero_division=0))
