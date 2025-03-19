@@ -2,15 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from torch.utils.data import DataLoader, TensorDataset
-import matplotlib
-matplotlib.use('Agg')
-
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Device used: {DEVICE}')
@@ -50,9 +49,14 @@ print('Dropping categorical columns...')
 categorical_cols = ['Flow ID', 'Source IP', 'Source Port', 'Destination IP', 'Destination Port', 'Protocol', 'Timestamp']
 data.drop(columns=categorical_cols, inplace=True, errors='ignore')
 
+# Cap classes to specific sample size
+samples_per_class = 5000  # Adjust this number as needed
+print(f'Capping each class to {samples_per_class} samples...')
+data_capped = data.groupby('Label').apply(lambda x: x.sample(n=min(len(x), samples_per_class), random_state=42)).reset_index(drop=True)
+
 print('Extracting features and labels...')
-X = data.drop(columns=['Label']).values
-y = data['Label'].values
+X = data_capped.drop(columns=['Label']).values
+y = data_capped['Label'].values
 
 print('Encoding labels...')
 label_encoder = LabelEncoder()
@@ -115,7 +119,7 @@ for epoch in range(10):
     train_losses.append(avg_loss)
     train_accuracies.append(accuracy)
 
-    print(f'Epoch [{epoch+1}/5], Loss: {avg_loss:.4f}, Accuracy: {accuracy*100:.2f}%')
+    print(f'Epoch [{epoch+1}/10], Loss: {avg_loss:.4f}, Accuracy: {accuracy*100:.2f}%')
 
 print('Evaluating model...')
 model.eval()
@@ -130,12 +134,11 @@ with torch.no_grad():
 accuracy = (torch.tensor(y_pred) == torch.tensor(y_true)).float().mean().item()
 print(f'Test Accuracy: {accuracy * 100:.2f}%')
 
-
 # Plotting loss and accuracy
 plt.figure(figsize=(12,5))
 plt.subplot(1, 2, 1)
-plt.plot(train_losses, label='Loss')
-plt.plot(train_accuracies, label='Accuracy')
+plt.plot(train_losses, '-o', label='Loss')
+plt.plot(train_accuracies, '-o', label='Accuracy')
 plt.xlabel('Epochs')
 plt.ylabel('Value')
 plt.title('Training Loss and Accuracy')
@@ -150,8 +153,6 @@ plt.xlabel('Predicted')
 plt.ylabel('True')
 
 plt.tight_layout()
-
-# Save the plot instead of showing
 plt.savefig('training_results.png')
 
 # Classification report
