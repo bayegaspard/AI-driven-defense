@@ -2,9 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from torch.utils.data import DataLoader, TensorDataset
+import matplotlib
+matplotlib.use('Agg')
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Device used: {DEVICE}')
@@ -32,14 +38,14 @@ class Net(nn.Module):
 
 # Dataset loading and preprocessing
 print('Loading dataset...')
-csv_path = '/home/offsec/llm/USMA/adv_rob/CICIDS2017_preprocessed.csv'  # Adjusted CSV path
+csv_path = '/home/offsec/llm/USMA/adv_rob/CICIDS2017_preprocessed.csv'
 data = pd.read_csv(csv_path, header=0, low_memory=False)
 
 print('Cleaning data...')
 data.replace([float('inf'), float('-inf')], pd.NA, inplace=True)
 data.dropna(inplace=True)
 
-# Dropping categorical columns (IP addresses, ports, protocol, and timestamp)
+# Dropping categorical columns
 print('Dropping categorical columns...')
 categorical_cols = ['Flow ID', 'Source IP', 'Source Port', 'Destination IP', 'Destination Port', 'Protocol', 'Timestamp']
 data.drop(columns=categorical_cols, inplace=True, errors='ignore')
@@ -82,10 +88,16 @@ print('Setting up training...')
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
+train_losses = []
+train_accuracies = []
+
 print('Starting training loop...')
 for epoch in range(10):
     model.train()
     total_loss = 0
+    correct = 0
+    total = 0
+
     for inputs, labels in train_loader:
         optimizer.zero_grad()
         outputs = model(inputs)
@@ -94,19 +106,53 @@ for epoch in range(10):
         optimizer.step()
         total_loss += loss.item()
 
-    avg_loss = total_loss / len(train_loader)
-    print(f'Epoch [{epoch+1}/10], Loss: {avg_loss:.4f}')
-
-print('Evaluating model...')
-model.eval()
-correct = 0
-total = 0
-with torch.no_grad():
-    for inputs, labels in test_loader:
-        outputs = model(inputs)
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
 
-accuracy = correct / total
+    avg_loss = total_loss / len(train_loader)
+    accuracy = correct / total
+    train_losses.append(avg_loss)
+    train_accuracies.append(accuracy)
+
+    print(f'Epoch [{epoch+1}/5], Loss: {avg_loss:.4f}, Accuracy: {accuracy*100:.2f}%')
+
+print('Evaluating model...')
+model.eval()
+y_true, y_pred = [], []
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        outputs = model(inputs)
+        _, predicted = torch.max(outputs.data, 1)
+        y_true.extend(labels.cpu().numpy())
+        y_pred.extend(predicted.cpu().numpy())
+
+accuracy = (torch.tensor(y_pred) == torch.tensor(y_true)).float().mean().item()
 print(f'Test Accuracy: {accuracy * 100:.2f}%')
+
+
+# Plotting loss and accuracy
+plt.figure(figsize=(12,5))
+plt.subplot(1, 2, 1)
+plt.plot(train_losses, label='Loss')
+plt.plot(train_accuracies, label='Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Value')
+plt.title('Training Loss and Accuracy')
+plt.legend()
+
+# Confusion matrix
+plt.subplot(1, 2, 2)
+cm = confusion_matrix(y_true, y_pred)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted')
+plt.ylabel('True')
+
+plt.tight_layout()
+
+# Save the plot instead of showing
+plt.savefig('training_results.png')
+
+# Classification report
+print('Classification Report:\n', classification_report(y_true, y_pred, target_names=label_encoder.classes_))
